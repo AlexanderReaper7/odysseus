@@ -39,11 +39,18 @@ if (-not (Test-Path $scriptPath)) {
 }
 
 $action = New-ScheduledTaskAction -Execute 'pwsh.exe' -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$scriptPath`" -RepoPath `"$RepoPath`"" -WorkingDirectory $RepoPath
+$principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Highest
 $trigger = switch ($Schedule) {
     'Daily' { New-ScheduledTaskTrigger -Daily -At $StartTime }
     'Weekly' { New-ScheduledTaskTrigger -Weekly -DaysOfWeek Monday -At $StartTime }
     'Hourly' { New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(5) -RepetitionInterval (New-TimeSpan -Hours 1) -RepetitionDuration ([TimeSpan]::MaxValue) }
 }
 
-Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -User $env:USERNAME -RunLevel Highest -Force
-Write-Host "Scheduled task '$TaskName' registered. Runs '$scriptPath' $Schedule at $StartTime."
+try {
+    Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Principal $principal -Force -ErrorAction Stop
+    Write-Host "Scheduled task '$TaskName' registered. Runs '$scriptPath' $Schedule at $StartTime."
+} catch {
+    Write-Error "Failed to register scheduled task '$TaskName': $($_.Exception.Message)"
+    Write-Error "Run this script in an elevated PowerShell session (Run as Administrator) and try again."
+    exit 1
+}

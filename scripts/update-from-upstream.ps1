@@ -36,7 +36,7 @@
 
 [CmdletBinding()]
 param(
-    [string]$RepoPath = $PSScriptRoot,
+    [string]$RepoPath = (Split-Path $PSScriptRoot -Parent),
     [string]$UpstreamRemote = 'upstream',
     [string]$OriginRemote = 'origin',
     [string]$BaseBranch = 'dev',
@@ -48,11 +48,30 @@ param(
 
 Set-StrictMode -Version Latest
 
+function Show-ErrorDialog {
+    param([string]$Message)
+    try {
+        Add-Type -AssemblyName PresentationFramework | Out-Null
+        [System.Windows.MessageBox]::Show($Message, 'Odysseus Update Failed', 'OK', 'Error') | Out-Null
+    } catch {
+        try {
+            $wshell = New-Object -ComObject WScript.Shell
+            $wshell.Popup($Message, 0, 'Odysseus Update Failed', 0x10) | Out-Null
+        } catch {
+            # ignore if UI cannot be shown
+        }
+    }
+}
+
 function Abort-WithMessage {
     param([string]$Message)
-    Write-Error $Message
+    Write-Error "ERROR: $Message"
+    Show-ErrorDialog $Message
     exit 1
 }
+
+$RepoPath = Resolve-Path -Path $RepoPath -ErrorAction Stop | Select-Object -ExpandProperty Path
+Write-Host "Resolved repository path: $RepoPath"
 
 Push-Location $RepoPath
 try {
@@ -60,6 +79,16 @@ try {
         Abort-WithMessage "This directory is not a git repository: $RepoPath"
     }
 
+    $gitTop = git rev-parse --show-toplevel 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        Abort-WithMessage "Failed to determine git repository top level. Is this a git repo?"
+    }
+    $gitTop = (Resolve-Path -Path $gitTop -ErrorAction Stop).Path
+    if ($gitTop -ne $RepoPath) {
+        Abort-WithMessage "The script resolved to '$RepoPath', but git repo root is '$gitTop'. Run the script from the repository root or set -RepoPath explicitly."
+    }
+
+    Write-Host "Confirmed repository root: $RepoPath"
     Write-Host "Checking repository status..."
     $status = git status --porcelain
     if ($status) {
@@ -107,6 +136,10 @@ try {
     }
 
     Write-Host "Update complete. Current branch: $(git branch --show-current)"
+}
+catch {
+    Write-Error "Fatal error: $($_.Exception.Message)"
+    exit 1
 }
 finally {
     Pop-Location
