@@ -156,6 +156,7 @@ services:
       - ntfy-cache:/var/cache/ntfy
     environment:
       - NTFY_BASE_URL=${NTFY_BASE_URL:-http://localhost:8091}
+      - NTFY_ENABLE_METRICS=true
     restart: unless-stopped
 
 volumes:
